@@ -1,21 +1,31 @@
 {
   "name": "v2md",
-  "version": "1.0.0",
-  "description": "B站视频转Markdown笔记工具",
+  "version": "2.0.0",
+  "main": "electron/main.js",
   "type": "module",
-  "main": "src/index.js",
-  "bin": {
-    "v2md": "./bin/cli.js"
-  },
   "scripts": {
-    "start": "node bin/cli.js"
+    "dev": "vite",
+    "build": "vite build",
+    "electron": "electron .",
+    "electron:dev": "concurrently \"vite\" \"electron .\""
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.40.0",
+    "axios": "^1.6.0",
+    "concurrently": "^8.2.0",
     "dotenv": "^16.4.5",
+    "electron-store": "^8.1.0",
+    "express": "^4.18.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
     "yt-dlp": "^1.0.0"
   },
-  "engines": {
-    "node": ">=18.0.0"
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.0",
+    "autoprefixer": "^10.4.0",
+    "electron": "^28.0.0",
+    "postcss": "^8.4.0",
+    "tailwindcss": "^3.4.0",
+    "vite": "^5.0.0"
   }
 }
