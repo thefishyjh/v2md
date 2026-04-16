@@ -12,7 +12,10 @@
       "Bash(git push:*)",
       "Bash(git commit -m ':*)",
       "Bash(npm install:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(npm view:*)",
+      "Bash(npm search:*)",
+      "Bash(git commit -m 'fix: use system yt-dlp command instead of npm package:*)"
     ]
   }
 }

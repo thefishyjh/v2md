@@ -44,19 +44,20 @@
 ### 前提依赖
 
 - **Node.js** >= 18.0.0
+- **yt-dlp** - 视频/字幕下载（命令行工具）
 - **ffmpeg** - 用于截取关键帧
 
-安装 ffmpeg：
+安装 yt-dlp 和 ffmpeg：
 
 ```bash
 # Windows (scoop)
-scoop install ffmpeg
+scoop install yt-dlp ffmpeg
 
 # macOS
-brew install ffmpeg
+brew install yt-dlp ffmpeg
 
 # Linux (Ubuntu/Debian)
-sudo apt install ffmpeg
+sudo apt install yt-dlp ffmpeg
 ```
 
 ### 安装步骤
