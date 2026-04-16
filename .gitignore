@@ -8,3 +8,5 @@ output/
 *.mkv
 *.ass
 *.srt
+release/
+dist/

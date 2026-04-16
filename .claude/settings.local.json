@@ -6,7 +6,13 @@
       "Bash(git init:*)",
       "Bash(gh repo:*)",
       "Bash(git add:*)",
-      "Bash(git commit -m 'Initial commit: v2md - B站视频转Markdown笔记工具:*)"
+      "Bash(git commit -m 'Initial commit: v2md - B站视频转Markdown笔记工具:*)",
+      "Bash(git branch:*)",
+      "Bash(git remote:*)",
+      "Bash(git push:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(npm install:*)",
+      "Bash(npm run:*)"
     ]
   }
 }
