@@ -15,7 +15,16 @@
       "Bash(npm run:*)",
       "Bash(npm view:*)",
       "Bash(npm search:*)",
-      "Bash(git commit -m 'fix: use system yt-dlp command instead of npm package:*)"
+      "Bash(git commit -m 'fix: use system yt-dlp command instead of npm package:*)",
+      "Bash(ffmpeg -version)",
+      "Bash(conda create:*)",
+      "Bash(/d/conda/Scripts/conda.exe create:*)",
+      "Bash(/d/conda/Scripts/conda.exe info:*)",
+      "Bash(/d/conda/Scripts/pip.exe install:*)",
+      "Bash(/d/conda/Scripts/yt-dlp.exe --version)",
+      "Bash(where.exe yt-dlp:*)",
+      "Bash(yt-dlp:*)",
+      "Bash(git commit:*)"
     ]
   }
 }
