@@ -1,0 +1,21 @@
+{
+  "name": "v2md",
+  "version": "1.0.0",
+  "description": "B站视频转Markdown笔记工具",
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "v2md": "./bin/cli.js"
+  },
+  "scripts": {
+    "start": "node bin/cli.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.40.0",
+    "dotenv": "^16.4.5",
+    "yt-dlp": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
