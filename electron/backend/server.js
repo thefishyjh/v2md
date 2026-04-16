@@ -1,4 +1,3 @@
-import express from 'express';
 import { ipcMain } from 'electron';
 import Store from 'electron-store';
 import { aiService } from './ai/index.js';
@@ -7,10 +6,11 @@ import { screenshotExtractor } from '../../src/screenshot-extractor.js';
 import { markdownGenerator } from '../../src/markdown-generator.js';
 
 const store = new Store();
-const app = express();
-app.use(express.json());
 
-let currentProcess = null;
+// 可关闭的空对象用于 server.close()
+const serverMock = {
+  close: () => {}
+};
 
 export function startServer() {
   // 初始化 AI 服务
@@ -53,5 +53,5 @@ export function startServer() {
     }
   });
 
-  return app;
+  return serverMock;
 }
