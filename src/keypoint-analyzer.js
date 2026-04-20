@@ -3,9 +3,7 @@ import { MinimaxProvider } from '../electron/backend/ai/minimax.js';
 import Store from 'electron-store';
 import fs from 'fs/promises';
 
-const execAsync = promisify(exec);
 const store = new Store();
-const anthropic = new Anthropic();
 
 // Segment length in minutes
 const SEGMENT_LENGTH_MINUTES = 5;
