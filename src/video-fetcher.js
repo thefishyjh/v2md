@@ -3,57 +3,87 @@ import { promisify } from 'util';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
+import { getTranscription } from './transcription-manager.js';
 
 const execAsync = promisify(exec);
 
-export async function videoFetcher(url) {
+export async function videoFetcher(url, options = {}) {
+  const { cookiePath, whisperPath = '', onProgress } = options;
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'v2md-'));
 
   // Step 1: Get metadata
-  console.log('  获取视频元数据...');
-  const metadata = await getMetadata(url, tempDir);
+  onProgress?.({ step: 1, message: '获取视频信息...' });
+  const metadata = await getMetadata(url, tempDir, cookiePath);
 
-  // Step 2: Download subtitle
-  console.log('  下载字幕...');
-  const subtitlePath = await downloadSubtitle(url, tempDir, metadata.id);
+  let subtitlePath = null;
+  let transcription = null;
+
+  // Step 2: Try to download subtitle, if fails use Whisper
+  onProgress?.({ step: 2, message: '检查字幕...' });
+  subtitlePath = await downloadSubtitle(url, tempDir, metadata.id, cookiePath);
+
+  if (!subtitlePath) {
+    // No subtitle - need to use Whisper for transcription
+    onProgress?.({ step: 2, message: '无字幕，使用 Whisper 转写...' });
+
+    // Download video first
+    onProgress?.({ step: 2, message: '下载视频用于转写...' });
+    const videoPath = await downloadVideo(url, tempDir, metadata.id, cookiePath);
+
+    if (videoPath) {
+      metadata.videoPath = videoPath;
+      // Use Whisper to transcribe
+      transcription = await getTranscription(videoPath, metadata.id, whisperPath);
+    }
+  }
 
   // Step 3: Download video for screenshots
-  console.log('  下载视频（用于截屏）...');
-  const videoPath = await downloadVideo(url, tempDir, metadata.id);
-  metadata.videoPath = videoPath;
+  if (!metadata.videoPath) {
+    onProgress?.({ step: 3, message: '下载视频用于截图...' });
+    metadata.videoPath = await downloadVideo(url, tempDir, metadata.id);
+  }
 
-  return { metadata, subtitlePath };
+  return { metadata, subtitlePath, transcription };
 }
 
-async function getMetadata(url, tempDir) {
+async function getMetadata(url, tempDir, cookiePath) {
   const outputFile = path.join(tempDir, 'metadata.json');
 
   try {
-    await execAsync(`yt-dlp --dump-json --no-playlist "${url}" > "${outputFile}" 2>NUL`);
+    let cmd = `set PYTHONHTTPSVERIFY=0 && yt-dlp --dump-json --no-playlist "${url}" > "${outputFile}" 2>NUL`;
+    if (cookiePath) {
+      cmd = `set PYTHONHTTPSVERIFY=0 && yt-dlp --dump-json --no-playlist --cookies "${cookiePath}" "${url}" > "${outputFile}" 2>NUL`;
+    }
+    await execAsync(cmd);
     const content = await fs.readFile(outputFile, 'utf-8');
     const info = JSON.parse(content);
 
     return {
       id: info.id || extractVideoId(url),
-      title: info.title || '未知标题',
-      uploader: info.uploader || info.channel || info.username || '未知UP主',
+      title: info.title || 'Unknown Title',
+      uploader: info.uploader || info.channel || info.username || 'Unknown UP',
       duration: info.duration || 0,
       uploadDate: info.upload_date || '',
       thumbnail: info.thumbnail || '',
       description: info.description || '',
       webpageUrl: info.webpage_url || url,
       videoPath: '',
+      hasSubtitle: !!(info.subtitles && Object.keys(info.subtitles).length > 0),
     };
   } catch (e) {
-    throw new Error(`获取视频信息失败: ${e.message}`);
+    throw new Error(`Failed to fetch metadata: ${e.message}`);
   }
 }
 
-async function downloadSubtitle(url, tempDir, videoId) {
+async function downloadSubtitle(url, tempDir, videoId, cookiePath) {
   const outputTemplate = path.join(tempDir, 'subtitle.%(ext)s');
 
   try {
-    await execAsync(`yt-dlp --write-sub --write-auto-sub --sub-lang zh-Hans,zh-cn,zh,en,ai-zh,ai-en --sub-format srt --no-playlist -o "${outputTemplate}" "${url}" 2>NUL`);
+    let cmd = `set PYTHONHTTPSVERIFY=0 && yt-dlp --write-sub --write-auto-sub --sub-lang zh-Hans,zh-CN,zh,en --sub-format srt --no-playlist -o "${outputTemplate}" "${url}" 2>NUL`;
+    if (cookiePath) {
+      cmd = `set PYTHONHTTPSVERIFY=0 && yt-dlp --write-sub --write-auto-sub --sub-lang zh-Hans,zh-CN,zh,en --sub-format srt --no-playlist --cookies "${cookiePath}" -o "${outputTemplate}" "${url}" 2>NUL`;
+    }
+    await execAsync(cmd);
 
     // Find the downloaded subtitle file
     const files = await fs.readdir(tempDir);
@@ -63,16 +93,20 @@ async function downloadSubtitle(url, tempDir, videoId) {
     }
     return null;
   } catch (e) {
-    console.log('  警告: 无法下载字幕，将仅使用视频信息生成笔记');
+    console.log('  Warning: Cannot download subtitles');
     return null;
   }
 }
 
-async function downloadVideo(url, tempDir, videoId) {
+async function downloadVideo(url, tempDir, videoId, cookiePath) {
   const outputTemplate = path.join(tempDir, 'video.%(ext)s');
 
   try {
-    await execAsync(`yt-dlp -f "bestvideo[ext=mp4]/best[ext=mp4]/best" --no-playlist -o "${outputTemplate}" "${url}" 2>NUL`);
+    let cmd = `set PYTHONHTTPSVERIFY=0 && yt-dlp -f "bestvideo[ext=mp4]/best[ext=mp4]/best" --no-playlist -o "${outputTemplate}" "${url}" 2>NUL`;
+    if (cookiePath) {
+      cmd = `set PYTHONHTTPSVERIFY=0 && yt-dlp -f "bestvideo[ext=mp4]/best[ext=mp4]/best" --no-playlist --cookies "${cookiePath}" -o "${outputTemplate}" "${url}" 2>NUL`;
+    }
+    await execAsync(cmd);
 
     // Find the downloaded video file
     const files = await fs.readdir(tempDir);
@@ -82,7 +116,7 @@ async function downloadVideo(url, tempDir, videoId) {
     }
     return null;
   } catch (e) {
-    console.log('  警告: 无法下载视频，将跳过截屏');
+    console.log('  Warning: Cannot download video');
     return null;
   }
 }
