@@ -1,95 +1,138 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { MinimaxProvider } from '../electron/backend/ai/minimax.js';
+import Store from 'electron-store';
 import fs from 'fs/promises';
 
+const execAsync = promisify(exec);
+const store = new Store();
 const anthropic = new Anthropic();
 
-export async function keypointAnalyzer(subtitlePath, numPoints = 8) {
-  // If no subtitle, generate from description or return empty
-  if (!subtitlePath) {
-    console.log('  无字幕内容，跳过关键点分析');
+// Segment length in minutes
+const SEGMENT_LENGTH_MINUTES = 5;
+
+export async function keypointAnalyzer(subtitlePath, numPoints = 8, transcription = null) {
+  // If no subtitle AND no transcription, skip analysis
+  if (!subtitlePath && !transcription) {
+    console.log('  No subtitle or transcription, skipping keypoint analysis');
     return [];
   }
 
-  // Read subtitle file
-  const subtitleContent = await fs.readFile(subtitlePath, 'utf-8');
-  const subtitleText = parseSubtitle(subtitleContent);
+  // Get text content
+  let fullText = '';
+  if (subtitlePath) {
+    const subtitleContent = await fs.readFile(subtitlePath, 'utf-8');
+    fullText = parseSubtitle(subtitleContent);
+  } else if (transcription) {
+    fullText = transcription.map(s => s.text).join('\n');
+  }
 
-  if (!subtitleText.trim()) {
-    console.log('  字幕内容为空，跳过关键点分析');
+  if (!fullText.trim()) {
+    console.log('  Content is empty, skipping analysis');
     return [];
   }
 
-  console.log(`  字幕长度: ${subtitleText.length} 字符`);
+  console.log(`  Content length: ${fullText.length} chars`);
 
-  // Call Claude API
-  const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6-20250514',
-    max_tokens: 2048,
-    messages: [{
-      role: 'user',
-      content: `你是一个视频内容分析助手。我会给你一段视频字幕，请你分析并提取出最重要的关键内容点。
+  // Initialize MiniMax provider
+  const minimax = new MinimaxProvider(
+    store.get('settings', {}).minimaxApiKey || '',
+    store.get('settings', {}).minimaxBaseUrl || 'https://api.minimax.chat'
+  );
 
-要求：
-1. 提取 ${numPoints} 个最有关代表性的关键点
-2. 每个关键点包含：时间戳（mm:ss格式）、标题（简短，不超过20字）、描述（1-2句话）
-3. 选择真正有信息价值、能帮助理解视频核心内容的时刻
-4. 忽略重复的废话和无意义内容
+  // Split into segments for analysis
+  const segments = splitIntoSegments(fullText, SEGMENT_LENGTH_MINUTES);
+  console.log(`  Split into ${segments.length} segments`);
 
-字幕内容：
-${subtitleText}
+  // Analyze each segment and collect all keypoints
+  const allKeypoints = [];
+  for (let i = 0; i < segments.length; i++) {
+    console.log(`  Analyzing segment ${i + 1}/${segments.length}...`);
 
-请以JSON格式返回，格式如下：
-{
-  "keypoints": [
-    { "time": "02:30", "title": "关键点标题", "description": "简短描述" }
-  ]
-}`,
-    }],
-  });
-
-  const responseText = response.content[0].text;
-  const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-
-  if (!jsonMatch) {
-    throw new Error('AI返回格式错误，无法解析关键点');
+    try {
+      const segmentKeypoints = await minimax.analyzeSegment(
+        segments[i].text,
+        segments[i].startTime,
+        Math.max(3, Math.floor(numPoints / segments.length) + 1)
+      );
+      allKeypoints.push(...segmentKeypoints);
+    } catch (e) {
+      console.error(`  Segment ${i + 1} analysis failed:`, e.message);
+    }
   }
 
-  const result = JSON.parse(jsonMatch[0]);
-  return result.keypoints || [];
+  // Deduplicate and merge keypoints
+  const deduplicated = deduplicateKeypoints(allKeypoints);
+  console.log(`  Total keypoints after dedup: ${deduplicated.length}`);
+
+  return deduplicated;
+}
+
+function splitIntoSegments(text, segmentMinutes) {
+  // Estimate time per character (average speech rate)
+  const charsPerMinute = 300;
+  const charsPerSegment = charsPerMinute * segmentMinutes;
+
+  const segments = [];
+  const lines = text.split('\n');
+  let currentSegment = { text: '', startTime: 0 };
+  let currentCharCount = 0;
+  let segmentStartTime = 0;
+
+  for (const line of lines) {
+    currentSegment.text += (currentSegment.text ? '\n' : '') + line;
+    currentCharCount += line.length;
+
+    if (currentCharCount >= charsPerSegment) {
+      currentSegment.endTime = segmentStartTime + segmentMinutes * 60;
+      segments.push(currentSegment);
+      segmentStartTime = currentSegment.endTime;
+      currentSegment = { text: '', startTime: segmentStartTime };
+      currentCharCount = 0;
+    }
+  }
+
+  if (currentSegment.text) {
+    segments.push(currentSegment);
+  }
+
+  return segments;
+}
+
+function deduplicateKeypoints(keypoints) {
+  const seen = new Map();
+  for (const kp of keypoints) {
+    const key = kp.title.toLowerCase().trim();
+    if (!seen.has(key)) {
+      seen.set(key, kp);
+    }
+  }
+  return Array.from(seen.values());
 }
 
 function parseSubtitle(content) {
-  // Parse SRT format and extract text
-  // SRT format:
-  // 1
-  // 00:00:00,000 --> 00:00:02,000
-  // Subtitle text
-  //
   const lines = content.split('\n');
   const textLines = [];
-  let capturing = false;
+  let inSubtitle = false;
   let currentText = [];
 
   for (const line of lines) {
     const trimmed = line.trim();
     if (/^\d+$/.test(trimmed)) {
-      // Sequence number
-      capturing = true;
+      inSubtitle = true;
       currentText = [];
-    } else if (/^\d{2}:\d{2}:\d{2}/.test(trimmed)) {
-      // Timestamp line
-      capturing = false;
-    } else if (trimmed === '') {
-      // Empty line - end of subtitle block
-      if (capturing && currentText.length > 0) {
+    }
+    else if (/^\d{2}:\d{2}:\d{2}/.test(trimmed)) {
+      // do nothing, skip timestamp
+    }
+    else if (trimmed === '') {
+      if (inSubtitle && currentText.length > 0) {
         textLines.push(currentText.join(' ').trim());
       }
-      capturing = false;
-    } else if (capturing) {
-      // Subtitle text
+      inSubtitle = false;
+    }
+    else if (inSubtitle) {
       currentText.push(trimmed);
     }
   }
-
   return textLines.join('\n');
 }
