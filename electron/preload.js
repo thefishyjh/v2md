@@ -1,18 +1,25 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  // 视频处理
+  // Video processing
   processVideo: (url, options) => ipcRenderer.invoke('video:process', url, options),
   cancelProcess: () => ipcRenderer.invoke('video:cancel'),
 
-  // 进度监听
+  // Progress
   onProgress: (callback) => ipcRenderer.on('video:progress', (_, data) => callback(data)),
 
-  // 设置
+  // Settings
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (settings) => ipcRenderer.invoke('settings:save', settings),
 
-  // 历史
+  // Dialogs
+  selectDirectory: () => ipcRenderer.invoke('dialog:selectDirectory'),
+  selectFile: (filters) => ipcRenderer.invoke('dialog:selectFile', filters),
+
+  // Shell
+  openFolder: (path) => ipcRenderer.invoke('shell:openPath', path),
+
+  // History
   getHistory: () => ipcRenderer.invoke('history:get'),
   deleteHistory: (id) => ipcRenderer.invoke('history:delete', id),
 });
