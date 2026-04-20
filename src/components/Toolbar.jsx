@@ -13,19 +13,42 @@ export default function Toolbar({ onProgress }) {
   const [numPoints, setNumPoints] = useState(8);
   const [loading, setLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [progress, setProgress] = useState(null);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
 
   async function handleStart() {
-    if (!url) return;
+    // Validation
+    if (!url.trim()) {
+      setError('请输入视频链接');
+      setTimeout(() => setError(null), 3000);
+      return;
+    }
+
+    if (!url.includes('bilibili.com')) {
+      setError('请输入有效的 B站 视频链接');
+      setTimeout(() => setError(null), 3000);
+      return;
+    }
+
+    setError(null);
+    setSuccess(null);
     setLoading(true);
+    setProgress({ step: 0, message: '开始处理...' });
+
     try {
       const result = await window.electronAPI.processVideo(url, { model, numPoints });
       if (result.success) {
-        onProgress?.({ step: 4, message: '完成', result });
+        setProgress({ step: 4, message: '完成' });
+        setSuccess(`笔记已生成：${result.outputPath}`);
+        setTimeout(() => setSuccess(null), 8000);
       } else {
-        onProgress?.({ error: result.error });
+        setError(result.error || '处理失败');
+        setProgress(null);
       }
     } catch (err) {
-      onProgress?.({ error: err.message });
+      setError(err.message);
+      setProgress(null);
     } finally {
       setLoading(false);
     }
@@ -33,7 +56,7 @@ export default function Toolbar({ onProgress }) {
 
   return (
     <>
-      <div className="bg-white border-t p-4 flex items-center gap-4">
+      <div className="bg-white border-t p-4 flex items-center gap-4 relative">
         <input
           type="text"
           placeholder="输入 B站视频链接..."
@@ -77,6 +100,48 @@ export default function Toolbar({ onProgress }) {
           设置
         </button>
       </div>
+      {/* Progress bar */}
+      {progress && (
+        <div className="absolute bottom-full left-0 right-0 bg-white border-b shadow-lg p-3">
+          <div className="flex items-center gap-3">
+            <div className="flex-1">
+              <div className="text-sm font-medium">{progress.message}</div>
+              <div className="flex gap-1 mt-1">
+                {[1, 2, 3, 4].map(step => (
+                  <div
+                    key={step}
+                    className={`h-2 flex-1 rounded ${
+                      step <= (progress.step || 0) ? 'bg-blue-500' : 'bg-gray-200'
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
+            {progress.step < 4 && (
+              <button
+                onClick={() => window.electronAPI.cancelProcess()}
+                className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
+              >
+                取消
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Error message */}
+      {error && (
+        <div className="absolute bottom-full left-0 right-0 bg-red-50 border-b border-red-200 p-3 text-red-600">
+          {error}
+        </div>
+      )}
+
+      {/* Success message */}
+      {success && (
+        <div className="absolute bottom-full left-0 right-0 bg-green-50 border-b border-green-200 p-3 text-green-600">
+          {success}
+        </div>
+      )}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
     </>
   );
