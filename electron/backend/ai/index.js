@@ -19,7 +19,7 @@ export class AIService {
     }
   }
 
-  async analyze(subtitle, numPoints, model = 'anthropic') {
+  async analyze(subtitle, numPoints, model = 'anthropic', transcription = null) {
     const provider = this.providers[model];
     if (!provider) throw new Error(`Unknown model: ${model}`);
     return provider.generate(subtitle, numPoints);
