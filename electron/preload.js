@@ -6,11 +6,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   cancelProcess: () => ipcRenderer.invoke('video:cancel'),
 
   // Progress
-  onProgress: (callback) => ipcRenderer.on('video:progress', (_, data) => callback(data)),
+  onProgress: (callback) => {
+    const listener = (_, data) => callback(data);
+    ipcRenderer.on('video:progress', listener);
+    return () => ipcRenderer.removeListener('video:progress', listener);
+  },
 
   // Settings
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (settings) => ipcRenderer.invoke('settings:save', settings),
+  validateMinimaxKey: (payload) => ipcRenderer.invoke('settings:validateMinimaxKey', payload),
 
   // Dialogs
   selectDirectory: () => ipcRenderer.invoke('dialog:selectDirectory'),

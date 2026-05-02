@@ -1,16 +1,31 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 import { startServer } from './backend/server.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// 写入日志文件
+const logFile = path.join(process.cwd(), 'v2md.log');
+function log(...args) {
+  const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+  const timestamp = new Date().toISOString();
+  const line = `[${timestamp}] ${msg}\n`;
+  fs.appendFileSync(logFile, line);
+  console.log(...args);
+}
 
 let mainWindow;
 let server;
 
 async function createWindow() {
-  // 启动 Express 后端
+  log('Starting v2md application...');
+  log('Log file:', logFile);
+
+  // 启动后端服务
   server = await startServer();
+  log('Backend server started');
 
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -29,11 +44,18 @@ async function createWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+
+  log('Window created, loading content...');
 }
 
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
+  log('Window closed, quitting...');
   if (server) server.close();
   app.quit();
 });

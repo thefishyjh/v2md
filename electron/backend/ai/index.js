@@ -12,7 +12,11 @@ export class AIService {
       this.providers.anthropic = new AnthropicProvider(settings.anthropicApiKey);
     }
     if (settings.minimaxApiKey) {
-      this.providers.minimax = new MinimaxProvider(settings.minimaxApiKey, settings.minimaxBaseUrl);
+      this.providers.minimax = new MinimaxProvider(
+        settings.minimaxApiKey,
+        settings.minimaxBaseUrl,
+        settings.minimaxModel
+      );
     }
     if (settings.deepseekApiKey) {
       this.providers.deepseek = new DeepSeekProvider(settings.deepseekApiKey);

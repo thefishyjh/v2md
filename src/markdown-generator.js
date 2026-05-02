@@ -1,7 +1,13 @@
 import fs from 'fs/promises';
 import path from 'path';
 
-export async function markdownGenerator(metadata, keypoints, screenshotPaths, outputDir) {
+export async function markdownGenerator(
+  metadata,
+  keypoints,
+  screenshotPaths,
+  outputDir,
+  extras = {}
+) {
   // Create organized directory structure
   const safeTitle = metadata.title.replace(/[<>:"/\\|?*]/g, '_').substring(0, 100);
   const videoDir = path.join(outputDir, safeTitle);
@@ -67,6 +73,24 @@ export async function markdownGenerator(metadata, keypoints, screenshotPaths, ou
   // Save keypoints as JSON
   const keypointsPath = path.join(videoDir, 'keypoints.json');
   await fs.writeFile(keypointsPath, JSON.stringify(keypoints, null, 2), 'utf-8');
+
+  if (Array.isArray(extras.transcription) && extras.transcription.length > 0) {
+    const transcriptionPath = path.join(videoDir, 'transcription.json');
+    await fs.writeFile(transcriptionPath, JSON.stringify(extras.transcription, null, 2), 'utf-8');
+  }
+
+  if (extras.subtitlePath) {
+    const subtitleDir = path.join(videoDir, 'subtitles');
+    await fs.mkdir(subtitleDir, { recursive: true });
+
+    const ext = path.extname(extras.subtitlePath) || '.srt';
+    const subtitleOutputPath = path.join(subtitleDir, `subtitle${ext}`);
+    try {
+      await fs.copyFile(extras.subtitlePath, subtitleOutputPath);
+    } catch (e) {
+      // Subtitle copy failed, keep main output available
+    }
+  }
 
   return videoDir;
 }

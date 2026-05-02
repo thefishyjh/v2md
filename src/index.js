@@ -49,11 +49,11 @@ async function main() {
 
   // Step 1: 获取视频信息和字幕
   console.log('\n[1/4] 获取视频信息...');
-  const { metadata, subtitlePath } = await videoFetcher(url);
+  const { metadata, subtitlePath, transcription } = await videoFetcher(url);
 
   // Step 2: 分析关键点
   console.log('\n[2/4] 分析关键内容点...');
-  const keypoints = await keypointAnalyzer(subtitlePath, numPoints);
+  const keypoints = await keypointAnalyzer(subtitlePath, numPoints, transcription);
 
   // Step 3: 截取关键帧
   let screenshotPaths = [];
@@ -64,7 +64,10 @@ async function main() {
 
   // Step 4: 生成 Markdown
   console.log('\n[4/4] 生成Markdown笔记...');
-  const outputPath = await markdownGenerator(metadata, keypoints, screenshotPaths, outputDir);
+  const outputPath = await markdownGenerator(metadata, keypoints, screenshotPaths, outputDir, {
+    subtitlePath,
+    transcription,
+  });
 
   console.log(`\n完成! 笔记已保存到: ${outputPath}`);
 }

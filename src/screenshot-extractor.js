@@ -13,7 +13,6 @@ export async function screenshotExtractor(videoPath, keypoints, outputDir, timeO
     return screenshots;
   }
 
-  // Check if ffmpeg is available
   try {
     await execAsync('ffmpeg -version');
   } catch (e) {
@@ -21,11 +20,9 @@ export async function screenshotExtractor(videoPath, keypoints, outputDir, timeO
     return screenshots;
   }
 
-  // Create screenshots directory
   const screenshotsDir = path.join(outputDir, 'screenshots');
   await fs.mkdir(screenshotsDir, { recursive: true });
 
-  // Parse time offset
   const offsetSeconds = parseTimeOffset(timeOffset);
 
   for (let i = 0; i < keypoints.length; i++) {
@@ -36,24 +33,27 @@ export async function screenshotExtractor(videoPath, keypoints, outputDir, timeO
     console.log(`  截取关键点 ${i + 1}/${keypoints.length}: [${timestamp}] ${keypoint.title}`);
 
     try {
-      // Convert mm:ss to seconds for ffmpeg
-      const [mins, secs] = timestamp.split(':').map(Number);
-      const targetSeconds = mins * 60 + secs + offsetSeconds;
+      const baseSeconds = parseTimestampToSeconds(timestamp);
+      if (baseSeconds == null) {
+        console.log(`    警告: 无法识别的时间戳 ${timestamp}`);
+        screenshots.push(null);
+        continue;
+      }
+
+      const targetSeconds = Math.max(0, baseSeconds + offsetSeconds);
       const targetTime = formatTimeForFFmpeg(targetSeconds);
 
-      // Extract frame at timestamp
       await execAsync(
         `ffmpeg -ss "${targetTime}" -i "${videoPath}" -vframes 1 -q:v 2 "${screenshotPath}" -y`,
         { timeout: 30000 }
       );
 
-      // Verify file was created
       const stats = await fs.stat(screenshotPath);
       if (stats.size > 0) {
         screenshots.push(screenshotPath);
         console.log(`    完成: ${screenshotPath}`);
       } else {
-        console.log(`    警告: 截屏文件为空`);
+        console.log('    警告: 截屏文件为空');
         screenshots.push(null);
       }
     } catch (e) {
@@ -65,6 +65,27 @@ export async function screenshotExtractor(videoPath, keypoints, outputDir, timeO
   return screenshots;
 }
 
+function parseTimestampToSeconds(timestamp) {
+  if (timestamp == null) return null;
+  const text = String(timestamp).trim();
+
+  if (/^\d+$/.test(text)) {
+    return Number(text);
+  }
+
+  if (/^\d{1,2}:\d{2}$/.test(text)) {
+    const [mins, secs] = text.split(':').map(Number);
+    return mins * 60 + secs;
+  }
+
+  if (/^\d{1,2}:\d{2}:\d{2}$/.test(text)) {
+    const [hours, mins, secs] = text.split(':').map(Number);
+    return hours * 3600 + mins * 60 + secs;
+  }
+
+  return null;
+}
+
 function parseTimeOffset(offset) {
   if (!offset || offset === '0') return 0;
 
@@ -72,15 +93,19 @@ function parseTimeOffset(offset) {
     const num = parseFloat(offset.substring(1));
     if (offset.endsWith('s')) {
       return num;
-    } else if (offset.endsWith('m')) {
+    }
+    if (offset.endsWith('m')) {
       return num * 60;
     }
     return num;
-  } else if (offset.startsWith('-')) {
+  }
+
+  if (offset.startsWith('-')) {
     const num = parseFloat(offset.substring(1));
     if (offset.endsWith('s')) {
       return -num;
-    } else if (offset.endsWith('m')) {
+    }
+    if (offset.endsWith('m')) {
       return -num * 60;
     }
     return -num;

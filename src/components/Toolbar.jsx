@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import SettingsModal from './SettingsModal';
 
 const MODELS = [
@@ -7,26 +7,48 @@ const MODELS = [
   { id: 'deepseek', name: 'DeepSeek' },
 ];
 
-export default function Toolbar({ onProgress }) {
+export default function Toolbar({ onProgress, onCompleted }) {
   const [url, setUrl] = useState('');
   const [model, setModel] = useState('anthropic');
   const [numPoints, setNumPoints] = useState(8);
+  const [outputDir, setOutputDir] = useState('./output');
   const [loading, setLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [progress, setProgress] = useState(null);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
 
+  useEffect(() => {
+    window.electronAPI.getSettings().then((settings = {}) => {
+      if (settings.outputDir) setOutputDir(settings.outputDir);
+      if (settings.defaultModel) setModel(settings.defaultModel);
+    });
+
+    const unsubscribe = window.electronAPI.onProgress((data) => {
+      setProgress(data);
+      onProgress?.(data);
+    });
+
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
+    };
+  }, [onProgress]);
+
   async function handleStart() {
-    // Validation
-    if (!url.trim()) {
+    const rawInput = url.trim();
+    if (!rawInput) {
       setError('请输入视频链接');
       setTimeout(() => setError(null), 3000);
       return;
     }
 
-    if (!url.includes('bilibili.com')) {
-      setError('请输入有效的 B站 视频链接');
+    const finalUrl = normalizeBilibiliInput(rawInput);
+    const normalizedUrl = finalUrl.toLowerCase();
+    const isBilibiliUrl = normalizedUrl.includes('bilibili.com') || normalizedUrl.includes('b23.tv');
+    if (!isBilibiliUrl) {
+      setError('请输入有效的 B 站链接，或直接输入 BV/av 号');
       setTimeout(() => setError(null), 3000);
       return;
     }
@@ -37,10 +59,11 @@ export default function Toolbar({ onProgress }) {
     setProgress({ step: 0, message: '开始处理...' });
 
     try {
-      const result = await window.electronAPI.processVideo(url, { model, numPoints });
+      const result = await window.electronAPI.processVideo(finalUrl, { model, numPoints, outputDir });
       if (result.success) {
         setProgress({ step: 4, message: '完成' });
         setSuccess(`笔记已生成：${result.outputPath}`);
+        onCompleted?.(result);
         setTimeout(() => setSuccess(null), 8000);
       } else {
         setError(result.error || '处理失败');
@@ -54,12 +77,21 @@ export default function Toolbar({ onProgress }) {
     }
   }
 
+  async function handleCancel() {
+    try {
+      await window.electronAPI.cancelProcess();
+      setProgress({ step: progress?.step || 0, message: '正在取消...' });
+    } catch (err) {
+      setError(err.message || '取消失败');
+    }
+  }
+
   return (
     <>
       <div className="bg-white border-t p-4 flex items-center gap-4 relative">
         <input
           type="text"
-          placeholder="输入 B站视频链接..."
+          placeholder="输入 B 站视频链接..."
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           className="flex-1 px-4 py-2 border rounded"
@@ -82,7 +114,7 @@ export default function Toolbar({ onProgress }) {
             min="3"
             max="15"
             value={numPoints}
-            onChange={(e) => setNumPoints(parseInt(e.target.value))}
+            onChange={(e) => setNumPoints(parseInt(e.target.value, 10))}
             className="w-24"
           />
         </div>
@@ -100,7 +132,7 @@ export default function Toolbar({ onProgress }) {
           设置
         </button>
       </div>
-      {/* Progress bar */}
+
       {progress && (
         <div className="absolute bottom-full left-0 right-0 bg-white border-b shadow-lg p-3">
           <div className="flex items-center gap-3">
@@ -119,7 +151,7 @@ export default function Toolbar({ onProgress }) {
             </div>
             {progress.step < 4 && (
               <button
-                onClick={() => window.electronAPI.cancelProcess()}
+                onClick={handleCancel}
                 className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
               >
                 取消
@@ -129,20 +161,54 @@ export default function Toolbar({ onProgress }) {
         </div>
       )}
 
-      {/* Error message */}
       {error && (
         <div className="absolute bottom-full left-0 right-0 bg-red-50 border-b border-red-200 p-3 text-red-600">
           {error}
         </div>
       )}
 
-      {/* Success message */}
       {success && (
         <div className="absolute bottom-full left-0 right-0 bg-green-50 border-b border-green-200 p-3 text-green-600">
           {success}
         </div>
       )}
-      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+
+      {showSettings && (
+        <SettingsModal
+          onClose={() => {
+            setShowSettings(false);
+            window.electronAPI.getSettings().then((settings = {}) => {
+              if (settings.outputDir) setOutputDir(settings.outputDir);
+            });
+          }}
+        />
+      )}
     </>
   );
+}
+
+function normalizeBilibiliInput(input) {
+  const text = String(input || '').trim();
+  if (!text) return '';
+
+  const bvMatch = text.match(/^(BV[0-9A-Za-z]+)$/i);
+  if (bvMatch) {
+    return `https://www.bilibili.com/video/${bvMatch[1]}`;
+  }
+
+  const avMatch = text.match(/^(av\d+)$/i);
+  if (avMatch) {
+    return `https://www.bilibili.com/video/${avMatch[1]}`;
+  }
+
+  try {
+    const u = new URL(text);
+    if (u.hostname.includes('bilibili.com') || u.hostname.includes('b23.tv')) {
+      return `${u.origin}${u.pathname}`;
+    }
+  } catch {
+    // Keep raw input if not a valid URL
+  }
+
+  return text;
 }

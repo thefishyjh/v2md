@@ -1,17 +1,27 @@
 import { useState, useEffect } from 'react';
 import { historyStore } from '../store/historyStore';
 
-export default function HistoryPanel({ onSelect, currentNote }) {
+export default function HistoryPanel({ onSelect, currentNote, refreshToken = 0 }) {
   const [notes, setNotes] = useState([]);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
     loadHistory();
-  }, []);
+  }, [refreshToken]);
 
   async function loadHistory() {
+    try {
+      if (window.electronAPI?.getHistory) {
+        const data = await window.electronAPI.getHistory();
+        setNotes((data || []).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+        return;
+      }
+    } catch (e) {
+      // fallback to indexeddb below
+    }
+
     const data = await historyStore.getAll();
-    setNotes(data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+    setNotes((data || []).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
   }
 
   const filtered = notes.filter(n =>
@@ -40,7 +50,7 @@ export default function HistoryPanel({ onSelect, currentNote }) {
           >
             <div className="font-medium truncate">{note.title}</div>
             <div className="text-sm text-gray-500">{note.createdAt}</div>
-            <div className="text-xs text-gray-400">{note.screenshotCount} 张截图</div>
+            <div className="text-xs text-gray-400">{note.screenshotCount || 0} 张截图</div>
           </div>
         ))}
       </div>
