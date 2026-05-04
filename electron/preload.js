@@ -27,4 +27,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // History
   getHistory: () => ipcRenderer.invoke('history:get'),
   deleteHistory: (id) => ipcRenderer.invoke('history:delete', id),
+
+  // Notes
+  readNote: (filePath) => ipcRenderer.invoke('note:read', filePath),
 });

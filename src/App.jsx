@@ -25,7 +25,12 @@ export default function App() {
       <Toolbar
         onProgress={setProgress}
         progress={progress}
-        onCompleted={() => setHistoryRefreshToken((t) => t + 1)}
+        onCompleted={(result) => {
+          if (result?.note) {
+            setCurrentNote(result.note);
+          }
+          setHistoryRefreshToken((t) => t + 1);
+        }}
       />
     </div>
   );

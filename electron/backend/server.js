@@ -1,5 +1,7 @@
 import { ipcMain, shell, dialog } from 'electron';
+import fs from 'fs/promises';
 import path from 'path';
+import { pathToFileURL } from 'url';
 import { aiService } from './ai/index.js';
 import { videoFetcher } from '../../src/video-fetcher.js';
 import { keypointAnalyzer } from '../../src/keypoint-analyzer.js';
@@ -12,6 +14,31 @@ import { MinimaxProvider } from './ai/minimax.js';
 const store = createLocalStore();
 aiService.init(store.get('settings', {}));
 let isCanceled = false;
+
+function toAbsolutePath(targetPath) {
+  if (!targetPath) return '';
+  return path.isAbsolute(targetPath)
+    ? targetPath
+    : path.resolve(process.cwd(), targetPath);
+}
+
+function normalizeNote(note) {
+  if (!note || typeof note !== 'object') return note;
+
+  const filePath = toAbsolutePath(note.filePath);
+  const outputPath = toAbsolutePath(note.outputPath);
+  const screenshots = Array.isArray(note.screenshots)
+    ? note.screenshots.map(toAbsolutePath).filter(Boolean)
+    : [];
+
+  return {
+    ...note,
+    filePath,
+    outputPath,
+    screenshots,
+    screenshotUrls: screenshots.map((s) => pathToFileURL(s).href),
+  };
+}
 
 // IPC: Select directory
 ipcMain.handle('dialog:selectDirectory', async () => {
@@ -87,12 +114,26 @@ ipcMain.handle('video:cancel', () => {
 });
 
 // IPC: History
-ipcMain.handle('history:get', () => store.get('history', []));
+ipcMain.handle('history:get', () => store.get('history', []).map(normalizeNote));
 ipcMain.handle('history:delete', (_, id) => {
   const history = store.get('history', []);
   const next = history.filter((item) => item.id !== id);
   store.set('history', next);
   return true;
+});
+
+// IPC: Read generated Markdown note
+ipcMain.handle('note:read', async (_, filePath) => {
+  const resolvedFilePath = toAbsolutePath(filePath);
+  const content = await fs.readFile(resolvedFilePath, 'utf-8');
+  const baseDir = path.dirname(resolvedFilePath);
+
+  return {
+    content,
+    filePath: resolvedFilePath,
+    baseDir,
+    assetBaseUrl: pathToFileURL(`${baseDir}${path.sep}`).href,
+  };
 });
 
 function assertNotCanceled() {
@@ -173,7 +214,7 @@ ipcMain.handle('video:process', async (event, url, options) => {
 
     store.set('history', [note, ...history].slice(0, 200));
 
-    return { success: true, outputPath, metadata, keypoints };
+    return { success: true, outputPath, metadata, keypoints, note: normalizeNote(note) };
   } catch (error) {
     return { success: false, error: error.message };
   } finally {

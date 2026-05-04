@@ -171,6 +171,7 @@ export class MinimaxProvider {
     this.baseUrl = normalizeBaseUrl(baseUrl);
     this.apiKey = apiKey;
     this.preferredModel = preferredModel;
+    this.protocol = this.baseUrl.includes('/anthropic') ? 'anthropic' : 'openai';
     this.client = axios.create({
       baseURL: this.baseUrl,
       headers: { Authorization: `Bearer ${apiKey}` },
@@ -234,6 +235,10 @@ export class MinimaxProvider {
   }
 
   async requestChatCompletion(messages, temperature) {
+    if (this.protocol === 'anthropic') {
+      return this.requestAnthropicMessages(messages, temperature);
+    }
+
     const endpointCandidates = ['/v1/text/chatcompletion_v2', '/v1/chat/completions', '/v1/text/chatcompletion'];
     const modelCandidates = [
       this.preferredModel,
@@ -264,6 +269,42 @@ export class MinimaxProvider {
     }
     throw lastError || new Error('MiniMax request failed');
   }
+
+  async requestAnthropicMessages(messages, temperature) {
+    const modelCandidates = [
+      this.preferredModel,
+      'MiniMax-M2.7-highspeed',
+      'MiniMax-M2.5',
+      'MiniMax-M2.1',
+      'MiniMax-M2',
+    ];
+
+    const anthropicMessages = messages.map((message) => ({
+      role: message.role === 'assistant' ? 'assistant' : 'user',
+      content: String(message.content || ''),
+    }));
+
+    let lastError = null;
+    for (const model of modelCandidates) {
+      try {
+        const response = await this.client.post('/v1/messages', {
+          model,
+          max_tokens: 4096,
+          messages: anthropicMessages,
+          temperature: Math.max(0.1, Number(temperature) || 0.1),
+        });
+        const statusCode = response?.data?.base_resp?.status_code;
+        if (statusCode == null || statusCode === 0) {
+          return response;
+        }
+        lastError = new Error(response?.data?.base_resp?.status_msg || `status_code=${statusCode}`);
+      } catch (e) {
+        lastError = e;
+      }
+    }
+
+    throw lastError || new Error('MiniMax Anthropic request failed');
+  }
 }
 
 function isAuthError(error) {
@@ -275,6 +316,12 @@ function extractResponseText(data) {
   if (!data) return '';
   const choiceText = data?.choices?.[0]?.message?.content;
   if (choiceText) return choiceText;
+  if (Array.isArray(data.content)) {
+    return data.content
+      .filter((block) => block?.type === 'text' && block.text)
+      .map((block) => block.text)
+      .join('\n');
+  }
   if (typeof data.reply === 'string' && data.reply) return data.reply;
   return '';
 }
